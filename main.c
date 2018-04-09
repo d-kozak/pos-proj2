@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <errno.h>
+#include <unistd.h>
 
 #define BUFFER_SIZE  513
 char buffer[BUFFER_SIZE];
@@ -21,17 +22,24 @@ pthread_cond_t condBufferProcessed = PTHREAD_COND_INITIALIZER;
 
 
 void loader() {
-    const char *messages[] = {"ls", "grep", "foo", "exit"};
     int index = 0;
     while (true) {
         pthread_mutex_lock(&mutex);
-        const char *cmd = messages[index];
-        memcpy(buffer,cmd,strlen(cmd));
-        buffer[strlen(cmd) + 1] = '\0';
-        printf("Loader: sending command: %s\n", cmd);
+        while(true) {
+            printf("dkozak>");
+            fflush(0);
+            ssize_t inputLen = read(0, buffer, BUFFER_SIZE);
+            if (inputLen >= BUFFER_SIZE) {
+                fprintf(stderr, "Input too long, please try something else\n");
+                continue;
+            }
+            buffer[inputLen - 1] = '\0';
+            break;
+        }
+        printf("Loader: sending command: '%s'\n", buffer);
         pthread_cond_signal(&condBufferReady);
 
-        if (strcmp(cmd, "exit") == 0) {
+        if (strcmp(buffer, "exit") == 0) {
             puts("Loader: Loaded exit, exiting");
             pthread_mutex_unlock(&mutex);
             return;
@@ -74,7 +82,6 @@ void *executor(void *arg) {
 }
 
 int main(int argc, char **argv) {
-
     pthread_t pt;
     if (pthread_create(&pt, NULL, executor, NULL) != 0) {
         printf("pthread failed: %d", errno);
