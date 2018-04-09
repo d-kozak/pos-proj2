@@ -30,16 +30,15 @@ void loader() {
         buffer[strlen(cmd) + 1] = '\0';
         printf("Loader: sending command: %s\n", cmd);
         pthread_cond_signal(&condBufferReady);
-        pthread_mutex_unlock(&mutex);
 
         if (strcmp(cmd, "exit") == 0) {
             puts("Loader: Loaded exit, exiting");
+            pthread_mutex_unlock(&mutex);
             return;
         }
         index++;
 
         puts("Loader: Data sent, preparing to wait for them to be processed");
-        pthread_mutex_lock(&mutex);
         while(strcmp(buffer,"") != 0) {
             puts("Loader: Data not processed yet, waiting...");
             pthread_cond_signal(&condBufferReady);
