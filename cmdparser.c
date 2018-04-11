@@ -29,25 +29,25 @@ char *getCommand(char **cmd) {
     return allocatedCmd;
 }
 
-char *getFilename(char **input, int delim) {
+bool getFilename(char **input, int delim,char** fileName) {
     char *inputChar = strchr(*input, delim);
     char *delimPostion = inputChar;
     if (inputChar == NULL)
-        return NULL;
+        return true;
     inputChar++;
     while (*inputChar == ' ')
         inputChar++;
     char *endOfFileName = getEndOfExpression(inputChar, ' ');
     unsigned long sizeOfInputFileName = endOfFileName - inputChar;
 
-    char *fileName = malloc(sizeOfInputFileName + 1);
-    if (fileName == NULL)
-        return NULL;
-    memcpy(fileName, inputChar, sizeOfInputFileName);
-    fileName[sizeOfInputFileName] = '\0';
+    *fileName = malloc(sizeOfInputFileName + 1);
+    if (*fileName == NULL)
+        return false;
+    memcpy(*fileName, inputChar, sizeOfInputFileName);
+    *fileName[sizeOfInputFileName] = '\0';
 
     memset(strchr(*input, delim), ' ', endOfFileName - delimPostion);
-    return fileName;
+    return true;
 }
 
 int countArguments(char *input) {
@@ -70,19 +70,22 @@ int countArguments(char *input) {
     return argumentCount;
 }
 
-bool getArguments(char *input, char ***outputArguments) {
+bool getArguments(char* command,char *input, char ***outputArguments) {
     while (*input != '\0' && *input == ' ') input++;
 
     int argumentCount = countArguments(input);
-    if (argumentCount == 0) {
-        return true;
-    }
-
     char **arguments = calloc((size_t) argumentCount + 1, sizeof(char *));
     if (arguments == NULL) {
         return false;
     }
     int argumentsIndex = 0;
+    arguments[argumentsIndex++] = command;
+
+    if (argumentCount == 0) {
+        *outputArguments = arguments;
+        return true;
+    }
+
 
     char *argumentStart = input;
     bool wasZeroInserted = false;

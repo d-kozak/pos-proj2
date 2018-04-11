@@ -26,17 +26,61 @@ pthread_cond_t condBufferProcessed = PTHREAD_COND_INITIALIZER;
 
 bool processCommand(char *input) {
     char *command = getCommand(&input);
-    char *inputFile = getFilename(&input, '<');
-    char *outputFile = getFilename(&input, '>');
-    if (outputFile == NULL) {
-        free(inputFile);
+    char *inputFile = NULL;
+    bool inputFileLoaded = getFilename(&input, '<', &inputFile);
+    if (!inputFileLoaded) {
+        return false;
     }
-    char **arguments;
-    bool argumentsLoaded = getArguments(input, &arguments);
+    char *outputFile = NULL;
+    bool outputFileLoaded = getFilename(&input, '>', &outputFile);
+    if (!outputFileLoaded) {
+        if (inputFile != NULL)
+            free(inputFile);
+    }
+    char **arguments = NULL;
+    bool argumentsLoaded = getArguments(command, input, &arguments);
     if (!argumentsLoaded) {
-        free(inputFile);
-        free(outputFile);
+        if (inputFile != NULL)
+            free(inputFile);
+        if (outputFile != NULL)
+            free(outputFile);
     }
+
+    pid_t id = fork();
+    if (id == -1) {
+        perror("fork");
+        if (inputFile != NULL)
+            free(inputFile);
+        if (outputFile != NULL)
+            free(outputFile);
+        if (arguments != NULL)
+            free(arguments);
+        return false;
+    } else if (id == 0) {
+        // child
+        int retVal = execvp(command, arguments);
+        if (retVal == -1) {
+            perror("error: ");
+            if (inputFile != NULL)
+                free(inputFile);
+            if (outputFile != NULL)
+                free(outputFile);
+            if (arguments != NULL)
+                free(arguments);
+            return false;
+        }
+
+    } else {
+        // parent, just clean up resources
+        if (inputFile != NULL)
+            free(inputFile);
+        if (outputFile != NULL)
+            free(outputFile);
+        if (arguments != NULL)
+            free(arguments);
+        return true;
+    }
+
 }
 
 void loader() {

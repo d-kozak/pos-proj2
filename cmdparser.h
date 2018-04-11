@@ -10,10 +10,10 @@
 
 char *getCommand(char **cmd);
 
-char *getFilename(char **input, int delim);
+bool getFilename(char **input, int delim, char **filename);
 
 int countArguments(char *input);
 
-bool getArguments(char *input, char ***outputArguments);
+bool getArguments(char *command, char *input, char ***outputArguments);
 
 #endif //POS_PROJ2_CMDPARSER_H
