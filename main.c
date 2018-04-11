@@ -99,16 +99,19 @@ bool processCommand(char *input) {
         if (inputFile != NULL) {
             if (!redirectStdin(inputFile)) {
                 cleanup(inputFile, outputFile, arguments);
+                exit(1);
             }
         }
         if (outputFile != NULL) {
             if (!redirectStdout(outputFile)) {
                 cleanup(inputFile, outputFile, arguments);
+                exit(1);
             }
         }
         if(outputFile == NULL && inBackground){
             if (!redirectStdout("/dev/null")) {
                 cleanup(inputFile, outputFile, arguments);
+                exit(1);
             }
         }
         // child
@@ -116,9 +119,9 @@ bool processCommand(char *input) {
         if (retVal == -1) {
             perror("error");
 
-            printf("%s",command);
+            fprintf(stderr,"%s",command);
             while(*arguments != NULL){
-                printf("%s",*arguments);
+                fprintf(stderr,"%s",*arguments);
                 arguments++;
             }
 

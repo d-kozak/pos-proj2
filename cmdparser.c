@@ -44,7 +44,7 @@ bool getFilename(char **input, int delim, char **fileName) {
     if (*fileName == NULL)
         return false;
     memcpy(*fileName, inputChar, sizeOfInputFileName);
-    *fileName[sizeOfInputFileName] = '\0';
+    (*fileName)[sizeOfInputFileName] = '\0';
 
     memset(strchr(*input, delim), ' ', endOfFileName - delimPostion);
     return true;
