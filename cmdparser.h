@@ -16,4 +16,6 @@ int countArguments(char *input);
 
 bool getArguments(char *command, char *input, char ***outputArguments);
 
+bool doInBackground(char **cmd);
+
 #endif //POS_PROJ2_CMDPARSER_H

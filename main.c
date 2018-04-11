@@ -67,6 +67,7 @@ bool redirectStdout(char *file) {
 
 bool processCommand(char *input) {
     char *command = getCommand(&input);
+    bool inBackground = doInBackground(&input);
     char *inputFile = NULL;
     bool inputFileLoaded = getFilename(&input, '<', &inputFile);
     if (!inputFileLoaded) {
@@ -102,6 +103,11 @@ bool processCommand(char *input) {
         }
         if (outputFile != NULL) {
             if (!redirectStdout(outputFile)) {
+                cleanup(inputFile, outputFile, arguments);
+            }
+        }
+        if(outputFile == NULL && inBackground){
+            if (!redirectStdout("/dev/null")) {
                 cleanup(inputFile, outputFile, arguments);
             }
         }

@@ -29,7 +29,7 @@ char *getCommand(char **cmd) {
     return allocatedCmd;
 }
 
-bool getFilename(char **input, int delim,char** fileName) {
+bool getFilename(char **input, int delim, char **fileName) {
     char *inputChar = strchr(*input, delim);
     char *delimPostion = inputChar;
     if (inputChar == NULL)
@@ -70,7 +70,7 @@ int countArguments(char *input) {
     return argumentCount;
 }
 
-bool getArguments(char* command,char *input, char ***outputArguments) {
+bool getArguments(char *command, char *input, char ***outputArguments) {
     while (*input != '\0' && *input == ' ') input++;
 
     int argumentCount = countArguments(input);
@@ -111,4 +111,12 @@ bool getArguments(char* command,char *input, char ***outputArguments) {
     *outputArguments = arguments;
     return true;
 
+}
+
+bool doInBackground(char **cmd) {
+    char *ptr = strchr(*cmd, '&');
+    if (ptr != NULL) {
+        *ptr = ' ';
+        return true;
+    } else return false;
 }
