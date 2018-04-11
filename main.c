@@ -12,6 +12,8 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/wait.h>
 
 #include "cmdparser.h"
 
@@ -23,6 +25,45 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condBufferReady = PTHREAD_COND_INITIALIZER;
 pthread_cond_t condBufferProcessed = PTHREAD_COND_INITIALIZER;
 
+
+void cleanup(char *inputFile, char *outputFile, char **arguments) {
+    if (inputFile != NULL)
+        free(inputFile);
+    if (outputFile != NULL)
+        free(outputFile);
+    if (arguments != NULL)
+        free(arguments);
+}
+
+bool redirectStdin(char *file) {
+    int fileDesc = open(file, O_RDONLY);
+    if (fileDesc == -1) {
+        perror("open");
+        fprintf(stderr, "Could not open file %s\n", file);
+        return false;
+    }
+    if (dup2(fileDesc, fileno(stdin)) == -1) {
+        perror("dup2");
+        close(fileDesc);
+        return false;
+    }
+    return true;
+}
+
+bool redirectStdout(char *file) {
+    int fileDesc = open(file, O_WRONLY | O_CREAT, 0644);
+    if (fileDesc == -1) {
+        perror("open");
+        fprintf(stderr, "Could not open file %s\n", file);
+        return false;
+    }
+    if (dup2(fileDesc, fileno(stdout)) == -1) {
+        perror("dup2");
+        close(fileDesc);
+        return false;
+    }
+    return true;
+}
 
 bool processCommand(char *input) {
     char *command = getCommand(&input);
@@ -49,38 +90,45 @@ bool processCommand(char *input) {
     pid_t id = fork();
     if (id == -1) {
         perror("fork");
-        if (inputFile != NULL)
-            free(inputFile);
-        if (outputFile != NULL)
-            free(outputFile);
-        if (arguments != NULL)
-            free(arguments);
+        cleanup(inputFile, outputFile, arguments);
         return false;
     } else if (id == 0) {
+
+        // todo think about cleaning the resources
+        if (inputFile != NULL) {
+            if (!redirectStdin(inputFile)) {
+                cleanup(inputFile, outputFile, arguments);
+            }
+        }
+        if (outputFile != NULL) {
+            if (!redirectStdout(outputFile)) {
+                cleanup(inputFile, outputFile, arguments);
+            }
+        }
         // child
         int retVal = execvp(command, arguments);
         if (retVal == -1) {
-            perror("error: ");
-            if (inputFile != NULL)
-                free(inputFile);
-            if (outputFile != NULL)
-                free(outputFile);
-            if (arguments != NULL)
-                free(arguments);
+            perror("error");
+
+            printf("%s",command);
+            while(*arguments != NULL){
+                printf("%s",*arguments);
+                arguments++;
+            }
+
+            cleanup(inputFile, outputFile, arguments);
             return false;
         }
-
     } else {
-        // parent, just clean up resources
-        if (inputFile != NULL)
-            free(inputFile);
-        if (outputFile != NULL)
-            free(outputFile);
-        if (arguments != NULL)
-            free(arguments);
+        // parent, just clean up resources and wait
+        int status;
+        waitpid(id,&status,0);
+        cleanup(inputFile, outputFile, arguments);
         return true;
     }
-
+    // never should end up here...
+    fprintf(stderr, "processCommand::internal error\n");
+    return false;
 }
 
 void loader() {
