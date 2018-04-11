@@ -25,12 +25,14 @@ void loader() {
     int index = 0;
     while (true) {
         pthread_mutex_lock(&mutex);
-        while(true) {
+        while (true) {
             printf("dkozak>");
             fflush(0);
             ssize_t inputLen = read(0, buffer, BUFFER_SIZE);
             if (inputLen >= BUFFER_SIZE) {
                 fprintf(stderr, "Input too long, please try something else\n");
+                int c;
+                while ((c = getchar()) != EOF && c != '\n');
                 continue;
             }
             buffer[inputLen - 1] = '\0';
@@ -47,7 +49,7 @@ void loader() {
         index++;
 
         puts("Loader: Data sent, preparing to wait for them to be processed");
-        while(strcmp(buffer,"") != 0) {
+        while (strcmp(buffer, "") != 0) {
             puts("Loader: Data not processed yet, waiting...");
             pthread_cond_signal(&condBufferReady);
             pthread_cond_wait(&condBufferProcessed, &mutex);
@@ -60,7 +62,7 @@ void *executor(void *arg) {
     while (true) {
         pthread_mutex_lock(&mutex);
         puts("Executor: Testing the buffer...");
-        while(strcmp(buffer,"") == 0) {
+        while (strcmp(buffer, "") == 0) {
             puts("Executor: Buffer not ready, waiting...");
             pthread_cond_signal(&condBufferProcessed);
             pthread_cond_wait(&condBufferReady, &mutex);
@@ -74,7 +76,7 @@ void *executor(void *arg) {
 
 
         printf("Executor: Processing the command: '%s'\n", buffer);
-        memset(buffer,'\0',BUFFER_SIZE);
+        memset(buffer, '\0', BUFFER_SIZE);
 
         pthread_cond_signal(&condBufferProcessed);
         pthread_mutex_unlock(&mutex);
@@ -89,7 +91,7 @@ int main(int argc, char **argv) {
     }
     loader();
     printf("Main: waiting for executor thread to finish\n");
-    if(pthread_join(pt,NULL) != 0){
+    if (pthread_join(pt, NULL) != 0) {
         printf("join failed: %d", errno);
         return 1;
     }
