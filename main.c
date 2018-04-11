@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/wait.h>
+#include <pwd.h>
 
 #include "cmdparser.h"
 
@@ -88,6 +89,23 @@ bool processCommand(char *input) {
             free(outputFile);
     }
 
+    if (strcmp("cd", command) == 0) {
+        int retVal;
+        if (arguments[1] == NULL || (strcmp("~", arguments[1]) == 0)) {
+            struct passwd *pw = getpwuid(getuid());
+            const char *homedir = pw->pw_dir;
+            retVal = chdir(homedir);
+        } else {
+            retVal = chdir(arguments[1]);
+        }
+
+        if (retVal != 0) {
+            perror("cd");
+        }
+        cleanup(inputFile, outputFile, arguments);
+        return retVal == 0;
+    }
+
     pid_t id = fork();
     if (id == -1) {
         perror("fork");
@@ -108,7 +126,7 @@ bool processCommand(char *input) {
                 exit(1);
             }
         }
-        if(outputFile == NULL && inBackground){
+        if (outputFile == NULL && inBackground) {
             if (!redirectStdout("/dev/null")) {
                 cleanup(inputFile, outputFile, arguments);
                 exit(1);
@@ -119,9 +137,9 @@ bool processCommand(char *input) {
         if (retVal == -1) {
             perror("error");
 
-            fprintf(stderr,"%s",command);
-            while(*arguments != NULL){
-                fprintf(stderr,"%s",*arguments);
+            fprintf(stderr, "%s\n", command);
+            while (*arguments != NULL) {
+                fprintf(stderr, "%s\n", *arguments);
                 arguments++;
             }
 
@@ -131,7 +149,7 @@ bool processCommand(char *input) {
     } else {
         // parent, just clean up resources and wait
         int status;
-        waitpid(id,&status,0);
+        waitpid(id, &status, 0);
         cleanup(inputFile, outputFile, arguments);
         return true;
     }
