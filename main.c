@@ -2,6 +2,7 @@
  * POS PROJ 2 - Shell
  * David Kozak
  * summer term 2018
+ * main file, contains the thread/process management
  */
 
 #include <stdlib.h>
@@ -12,6 +13,8 @@
 #include <errno.h>
 #include <unistd.h>
 
+#include "cmdparser.h"
+
 #define BUFFER_SIZE  513
 char buffer[BUFFER_SIZE];
 
@@ -20,6 +23,21 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condBufferReady = PTHREAD_COND_INITIALIZER;
 pthread_cond_t condBufferProcessed = PTHREAD_COND_INITIALIZER;
 
+
+bool processCommand(char *input) {
+    char *command = getCommand(&input);
+    char *inputFile = getFilename(&input, '<');
+    char *outputFile = getFilename(&input, '>');
+    if (outputFile == NULL) {
+        free(inputFile);
+    }
+    char **arguments;
+    bool argumentsLoaded = getArguments(input, &arguments);
+    if (!argumentsLoaded) {
+        free(inputFile);
+        free(outputFile);
+    }
+}
 
 void loader() {
     int index = 0;
@@ -76,6 +94,7 @@ void *executor(void *arg) {
 
 
         printf("Executor: Processing the command: '%s'\n", buffer);
+        processCommand(buffer);
         memset(buffer, '\0', BUFFER_SIZE);
 
         pthread_cond_signal(&condBufferProcessed);
