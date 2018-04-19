@@ -66,6 +66,19 @@ bool redirectStdout(char *file) {
     return true;
 }
 
+sig_atomic_t backgroundProcessId = -1;
+
+void sigChildCatcher(int signal){
+    if(signal != SIGCHLD){
+        fprintf(stderr,"Internal error, this should never happen\n");
+        return;
+    }
+    if(backgroundProcessId != -1) {
+        printf("[X]\t%d done\n",backgroundProcessId);
+        backgroundProcessId = -1;
+    }
+}
+
 bool processCommand(char *input) {
     char *command = getCommand(&input);
     bool inBackground = doInBackground(&input);
@@ -87,6 +100,17 @@ bool processCommand(char *input) {
             free(inputFile);
         if (outputFile != NULL)
             free(outputFile);
+    }
+
+    if(inBackground){
+        struct sigaction sigact;
+        sigact.sa_handler = sigChildCatcher;
+        sigact.sa_flags = 0;
+
+        if(sigaction(SIGCHLD,&sigact,NULL) == -1){
+            perror("sigaction");
+            return 1;
+        }
     }
 
     if (strcmp("cd", command) == 0) {
@@ -136,17 +160,13 @@ bool processCommand(char *input) {
         int retVal = execvp(command, arguments);
         if (retVal == -1) {
             perror("error");
-
-            fprintf(stderr, "%s\n", command);
-            while (*arguments != NULL) {
-                fprintf(stderr, "%s\n", *arguments);
-                arguments++;
-            }
-
             cleanup(inputFile, outputFile, arguments);
-            return false;
+            exit(1);
         }
     } else {
+        if(inBackground){
+            backgroundProcessId = id;
+        }
         // parent, just clean up resources and wait
         int status;
         waitpid(id, &status, 0);
@@ -221,7 +241,20 @@ void *executor(void *arg) {
     }
 }
 
+void catcher(int signal){
+
+}
+
 int main(int argc, char **argv) {
+    struct sigaction sigact;
+    sigact.sa_handler = catcher;
+    sigact.sa_flags = 0;
+
+    if(sigaction(SIGINT,&sigact,NULL) == -1){
+        perror("sigaction");
+        return 1;
+    }
+
     pthread_t pt;
     if (pthread_create(&pt, NULL, executor, NULL) != 0) {
         printf("pthread failed: %d", errno);
