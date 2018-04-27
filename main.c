@@ -26,6 +26,9 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condBufferReady = PTHREAD_COND_INITIALIZER;
 pthread_cond_t condBufferProcessed = PTHREAD_COND_INITIALIZER;
 
+pthread_mutex_t pidMutex = PTHREAD_MUTEX_INITIALIZER;
+pid_t currentProcPid;
+
 
 void cleanup(char *inputFile, char *outputFile, char **arguments) {
     if (inputFile != NULL)
@@ -36,46 +39,69 @@ void cleanup(char *inputFile, char *outputFile, char **arguments) {
         free(arguments);
 }
 
-bool redirectStdin(char *file) {
+int redirectStdin(char *file) {
     int fileDesc = open(file, O_RDONLY);
     if (fileDesc == -1) {
         perror("open");
         fprintf(stderr, "Could not open file %s\n", file);
-        return false;
+        return -1;
     }
     if (dup2(fileDesc, fileno(stdin)) == -1) {
         perror("dup2");
         close(fileDesc);
-        return false;
+        return -1;
     }
-    return true;
+    return fileDesc;
 }
 
-bool redirectStdout(char *file) {
+int redirectStdout(char *file) {
     int fileDesc = open(file, O_WRONLY | O_CREAT, 0644);
     if (fileDesc == -1) {
         perror("open");
         fprintf(stderr, "Could not open file %s\n", file);
-        return false;
+        return -1;
     }
     if (dup2(fileDesc, fileno(stdout)) == -1) {
         perror("dup2");
         close(fileDesc);
-        return false;
+        return -1;
     }
-    return true;
+    return fileDesc;
 }
 
-sig_atomic_t backgroundProcessId = -1;
+void sigIntCatcher(int signal) {
+    pthread_mutex_lock(&pidMutex);
+    if (currentProcPid != 0) {
+        kill(currentProcPid, SIGINT);
+    }
+    pthread_mutex_unlock(&pidMutex);
+    puts(""); //add newline
+}
 
-void sigChildCatcher(int signal){
-    if(signal != SIGCHLD){
-        fprintf(stderr,"Internal error, this should never happen\n");
+void sigChildCatcher(int signal) {
+    if (signal != SIGCHLD) {
+        fprintf(stderr, "Internal error, this should never happen\n");
         return;
     }
-    if(backgroundProcessId != -1) {
-        printf("[X]\t%d done\n",backgroundProcessId);
-        backgroundProcessId = -1;
+
+    int retCode;
+    pid_t pid = wait(&retCode);
+    if (pid < 0) {
+        // nothing to do
+        // you get here only if the process is not in the background
+        return;
+    }
+    if (WIFEXITED(retCode)) {
+        printf("[%d] normal termination (exit code = %d)\n", pid, WEXITSTATUS(retCode));
+    } else if (WIFSIGNALED(retCode)) {
+#ifdef WCOREDUMP
+        printf("[%d] signal termination %s(signal = %d)\n", pid, WCOREDUMP(retCode) ? "with core dump" : "",
+               WTERMSIG(retCode));
+#else
+        printf("[%d] signal termination %s(signal = %d)\n", pid,"", WTERMSIG(status));
+#endif
+    } else {
+        printf("[%d] unknown type of termination\n", pid);
     }
 }
 
@@ -102,17 +128,6 @@ bool processCommand(char *input) {
             free(outputFile);
     }
 
-    if(inBackground){
-        struct sigaction sigact;
-        sigact.sa_handler = sigChildCatcher;
-        sigact.sa_flags = 0;
-
-        if(sigaction(SIGCHLD,&sigact,NULL) == -1){
-            perror("sigaction");
-            return 1;
-        }
-    }
-
     if (strcmp("cd", command) == 0) {
         int retVal;
         if (arguments[1] == NULL || (strcmp("~", arguments[1]) == 0)) {
@@ -136,16 +151,17 @@ bool processCommand(char *input) {
         cleanup(inputFile, outputFile, arguments);
         return false;
     } else if (id == 0) {
-
-        // todo think about cleaning the resources
+        // child
+        int inputFileDesc = -1;
         if (inputFile != NULL) {
-            if (!redirectStdin(inputFile)) {
+            if ((inputFileDesc = redirectStdin(inputFile)) == -1) {
                 cleanup(inputFile, outputFile, arguments);
                 exit(1);
             }
         }
+        int outputFileDesc = -1;
         if (outputFile != NULL) {
-            if (!redirectStdout(outputFile)) {
+            if ((outputFileDesc = redirectStdout(outputFile)) == -1) {
                 cleanup(inputFile, outputFile, arguments);
                 exit(1);
             }
@@ -156,20 +172,31 @@ bool processCommand(char *input) {
                 exit(1);
             }
         }
-        // child
         int retVal = execvp(command, arguments);
         if (retVal == -1) {
-            perror("error");
+            perror("execvp");
+            if (inputFileDesc != -1)
+                close(inputFileDesc);
+            if (outputFileDesc != -1)
+                close(outputFileDesc);
             cleanup(inputFile, outputFile, arguments);
             exit(1);
         }
     } else {
-        if(inBackground){
-            backgroundProcessId = id;
-        }
+
         // parent, just clean up resources and wait
-        int status;
-        waitpid(id, &status, 0);
+        if (!inBackground) {
+            int status;
+            pthread_mutex_lock(&pidMutex);
+            currentProcPid = id;
+            pthread_mutex_unlock(&pidMutex);
+            waitpid(id, &status, 0);
+            pthread_mutex_lock(&pidMutex);
+            currentProcPid = 0;
+            pthread_mutex_unlock(&pidMutex);
+        } else {
+            printf("\n[%d] started\n", id);
+        }
         cleanup(inputFile, outputFile, arguments);
         return true;
     }
@@ -195,19 +222,19 @@ void loader() {
             buffer[inputLen - 1] = '\0';
             break;
         }
-        printf("Loader: sending command: '%s'\n", buffer);
+//        printf("Loader: sending command: '%s'\n", buffer);
         pthread_cond_signal(&condBufferReady);
 
         if (strcmp(buffer, "exit") == 0) {
-            puts("Loader: Loaded exit, exiting");
+//            puts("Loader: Loaded exit, exiting");
             pthread_mutex_unlock(&mutex);
             return;
         }
         index++;
 
-        puts("Loader: Data sent, preparing to wait for them to be processed");
+//        puts("Loader: Data sent, preparing to wait for them to be processed");
         while (strcmp(buffer, "") != 0) {
-            puts("Loader: Data not processed yet, waiting...");
+//            puts("Loader: Data not processed yet, waiting...");
             pthread_cond_signal(&condBufferReady);
             pthread_cond_wait(&condBufferProcessed, &mutex);
         }
@@ -218,21 +245,21 @@ void loader() {
 void *executor(void *arg) {
     while (true) {
         pthread_mutex_lock(&mutex);
-        puts("Executor: Testing the buffer...");
+//        puts("Executor: Testing the buffer...");
         while (strcmp(buffer, "") == 0) {
-            puts("Executor: Buffer not ready, waiting...");
+//            puts("Executor: Buffer not ready, waiting...");
             pthread_cond_signal(&condBufferProcessed);
             pthread_cond_wait(&condBufferReady, &mutex);
         }
 
         if (strcmp(buffer, "exit") == 0) {
-            puts("Executor: Received exit, exiting");
+//            puts("Executor: Received exit, exiting");
             pthread_mutex_unlock(&mutex);
             return NULL;
         }
 
 
-        printf("Executor: Processing the command: '%s'\n", buffer);
+//        printf("Executor: Processing the command: '%s'\n", buffer);
         processCommand(buffer);
         memset(buffer, '\0', BUFFER_SIZE);
 
@@ -241,16 +268,23 @@ void *executor(void *arg) {
     }
 }
 
-void catcher(int signal){
-
-}
-
 int main(int argc, char **argv) {
     struct sigaction sigact;
-    sigact.sa_handler = catcher;
+    sigact.sa_handler = sigIntCatcher;
     sigact.sa_flags = 0;
+    sigemptyset(&sigact.sa_mask);
 
-    if(sigaction(SIGINT,&sigact,NULL) == -1){
+    if (sigaction(SIGINT, &sigact, NULL) == -1) {
+        perror("sigaction");
+        return 1;
+    }
+
+    struct sigaction sigact2;
+    sigact2.sa_handler = sigChildCatcher;
+    sigact2.sa_flags = 0;
+    sigemptyset(&sigact2.sa_mask);
+
+    if (sigaction(SIGCHLD, &sigact2, NULL) == -1) {
         perror("sigaction");
         return 1;
     }
@@ -261,7 +295,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     loader();
-    printf("Main: waiting for executor thread to finish\n");
+//    printf("Main: waiting for executor thread to finish\n");
     if (pthread_join(pt, NULL) != 0) {
         printf("join failed: %d", errno);
         return 1;

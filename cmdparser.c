@@ -74,7 +74,7 @@ bool getArguments(char *command, char *input, char ***outputArguments) {
     while (*input != '\0' && *input == ' ') input++;
 
     int argumentCount = countArguments(input);
-    char **arguments = calloc((size_t) argumentCount + 1, sizeof(char *));
+    char **arguments = calloc((size_t) argumentCount + 2, sizeof(char *));
     if (arguments == NULL) {
         return false;
     }
@@ -82,6 +82,7 @@ bool getArguments(char *command, char *input, char ***outputArguments) {
     arguments[argumentsIndex++] = command;
 
     if (argumentCount == 0) {
+        arguments[argumentCount + 1] = NULL;
         *outputArguments = arguments;
         return true;
     }
@@ -108,6 +109,7 @@ bool getArguments(char *command, char *input, char ***outputArguments) {
     if (argumentStart != NULL) {
         arguments[argumentsIndex] = argumentStart;
     }
+    arguments[argumentCount + 1] = NULL;
     *outputArguments = arguments;
     return true;
 
